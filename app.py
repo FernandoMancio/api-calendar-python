@@ -121,7 +121,9 @@ def get_patient_by_phone():
         cur = conn.cursor() # Cria um "cursor" para executar comandos
 
         # 3. Executa a consulta SQL para encontrar o paciente
-        cur.execute("SELECT id, full_name, email FROM patients WHERE phone = %s", (phone_number,))
+        #cur.execute("SELECT id, full_name, email FROM patients WHERE phone = %s", (phone_number,))
+        cur.execute("SELECT CadCli_Nome, CadCli_Email FROM dCadastro_Cli WHERE CadCli_Celular = %s", (phone_number,))
+
         
         patient = cur.fetchone() # Pega o primeiro resultado encontrado
 
@@ -151,5 +153,6 @@ def get_patient_by_phone():
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
 
