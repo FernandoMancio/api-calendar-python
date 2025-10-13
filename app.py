@@ -9,41 +9,61 @@ from googleapiclient.discovery import build
 # Inicializa a aplicação Flask
 app = Flask(__name__)
 
-# --- CARREGANDO AS CREDENCIAIS DE FORMA SEGURA ---
-# O Render vai nos fornecer as credenciais como variáveis de ambiente.
-# Este bloco de código as lê e as monta no formato que a biblioteca do Google espera.
-try:
-    SERVICE_ACCOUNT_INFO = json.loads(os.environ.get('GOOGLE_CREDENTIALS_JSON'))
-    CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID')
-    DATABASE_URL = os.environ.get('DATABASE_URL')
+# --- CARREGANDO VARIÁVEIS DE AMBIENTE ---
+GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS_JSON')
+GOOGLE_CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID')
+DATABASE_URL = os.environ.get('DATABASE_URL')
 
+# --- INICIALIZAÇÃO DOS SERVIÇOS ---
+google_service = None
+db_conn_error = None
+
+# Tenta inicializar o serviço do Google Calendar
+try:
+    if not GOOGLE_CREDENTIALS_JSON:
+        raise ValueError("Variável de ambiente GOOGLE_CREDENTIALS_JSON não encontrada.")
+    
+    service_account_info = json.loads(GOOGLE_CREDENTIALS_JSON)
+    credentials = service_account.Credentials.from_service_account_info(
+        service_account_info,
+        scopes=['https://www.googleapis.com/auth/calendar']
+     )
+    google_service = build('calendar', 'v3', credentials=credentials)
+    print("Serviço do Google Calendar inicializado com sucesso.")
+
+except Exception as e:
+    print(f"ERRO CRÍTICO ao inicializar o Google Calendar: {e}")
+
+
+# Tenta verificar a conexão com o banco de dados
+try:
+    if not DATABASE_URL:
+        raise ValueError("Variável de ambiente DATABASE_URL não encontrada.")
+    
+    conn = psycopg2.connect(DATABASE_URL)
+    conn.close() # Apenas testa a conexão e fecha
+    print("Conexão com o banco de dados testada com sucesso.")
+
+except Exception as e:
+    db_conn_error = str(e)
+    print(f"ERRO CRÍTICO ao conectar com o banco de dados: {e}")
+
+
+# --- FUNÇÃO HELPER PARA CONEXÃO COM O BANCO DE DADOS ---
+# Esta função será chamada toda vez que uma rota precisar do banco de dados
 def get_db_connection():
+    if db_conn_error:
+        raise Exception(f"A conexão com o banco de dados falhou na inicialização: {db_conn_error}")
     conn = psycopg2.connect(DATABASE_URL)
     return conn
 
-    # Cria as credenciais a partir das informações da conta de serviço
-    credentials = service_account.Credentials.from_service_account_info(
-        SERVICE_ACCOUNT_INFO,
-        scopes=['https://www.googleapis.com/auth/calendar']
-     )
-    
-    # Constrói o serviço do Google Calendar
-    service = build('calendar', 'v3', credentials=credentials)
-    
-except Exception as e:
-    # Se houver um erro ao carregar as credenciais, a API não funcionará.
-    # Esta mensagem aparecerá nos logs de erro do Render.
-    print(f"ERRO CRÍTICO: Falha ao carregar credenciais ou variáveis de ambiente. {e}")
-    service = None
-
 
 # --- O ENDPOINT DA NOSSA API ---
-# Este é o "endereço" que o Typebot vai chamar.
 @app.route('/api/create-event', methods=['POST'])
 def create_event():
-    # Verifica se as credenciais foram carregadas corretamente
-    if not service:
-        return jsonify({"message": "Erro de configuração no servidor."}), 500
+    # Verifica se o serviço do Google foi carregado corretamente
+    if not google_service:
+        return jsonify({"message": "Erro de configuração no servidor (Google Service não disponível)."}), 500
 
     # 1. Extrai os dados enviados pelo Typebot
     data = request.get_json()
@@ -131,4 +151,5 @@ def get_patient_by_phone():
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
