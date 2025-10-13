@@ -10,15 +10,17 @@ from googleapiclient.discovery import build
 app = Flask(__name__)
 
 # --- CARREGANDO VARIÁVEIS DE AMBIENTE ---
+# Pega as credenciais e configurações do ambiente do Render de forma segura
 GOOGLE_CREDENTIALS_JSON = os.environ.get('GOOGLE_CREDENTIALS_JSON')
 GOOGLE_CALENDAR_ID = os.environ.get('GOOGLE_CALENDAR_ID')
 DATABASE_URL = os.environ.get('DATABASE_URL')
 
 # --- INICIALIZAÇÃO DOS SERVIÇOS ---
+# Define variáveis globais para os serviços, para que possam ser usadas em todas as rotas
 google_service = None
 db_conn_error = None
 
-# Tenta inicializar o serviço do Google Calendar
+# Tenta inicializar o serviço do Google Calendar ao iniciar a aplicação
 try:
     if not GOOGLE_CREDENTIALS_JSON:
         raise ValueError("Variável de ambiente GOOGLE_CREDENTIALS_JSON não encontrada.")
@@ -35,14 +37,14 @@ except Exception as e:
     print(f"ERRO CRÍTICO ao inicializar o Google Calendar: {e}")
 
 
-# Tenta verificar a conexão com o banco de dados
+# Tenta verificar a conexão com o banco de dados ao iniciar a aplicação
 try:
     if not DATABASE_URL:
         raise ValueError("Variável de ambiente DATABASE_URL não encontrada.")
     
     conn = psycopg2.connect(DATABASE_URL)
-    conn.close() # Apenas testa a conexão e fecha
-    print("Conexão com o banco de dados testada com sucesso.")
+    conn.close() # Apenas testa a conexão e fecha imediatamente
+    print("Conexão com o banco de dados Supabase testada com sucesso.")
 
 except Exception as e:
     db_conn_error = str(e)
@@ -50,7 +52,7 @@ except Exception as e:
 
 
 # --- FUNÇÃO HELPER PARA CONEXÃO COM O BANCO DE DADOS ---
-# Esta função será chamada toda vez que uma rota precisar do banco de dados
+# Esta função será chamada toda vez que uma rota precisar interagir com o banco
 def get_db_connection():
     if db_conn_error:
         raise Exception(f"A conexão com o banco de dados falhou na inicialização: {db_conn_error}")
@@ -58,14 +60,50 @@ def get_db_connection():
     return conn
 
 
-# --- O ENDPOINT DA NOSSA API ---
+# --- ROTA PARA BUSCAR PACIENTE POR TELEFONE ---
+@app.route('/api/patient', methods=['GET'])
+def get_patient_by_phone():
+    phone_number = request.args.get('phone')
+
+    if not phone_number:
+        return jsonify({"message": "Número de telefone não fornecido."}), 400
+
+    try:
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # Consulta SQL ajustada para usar os nomes da sua tabela e colunas
+        # !! IMPORTANTE: Verifique se 'CadCli_Email' é o nome correto da sua coluna de e-mail !!
+        sql_query = "SELECT CadCli_NmPrefer, CadCli_Email FROM Cadastro_Cli WHERE CadCli_Celular = %s"
+        
+        cur.execute(sql_query, (phone_number,))
+        patient = cur.fetchone()
+
+        cur.close()
+        conn.close()
+
+        if patient:
+            # Monta a resposta JSON com as chaves que o Typebot vai usar
+            patient_data = {
+                "preferred_name": patient[0],
+                "email": patient[1]
+            }
+            return jsonify(patient_data), 200
+        else:
+            return jsonify({"message": "Paciente não encontrado."}), 404
+
+    except Exception as e:
+        print(f"Erro ao buscar paciente: {e}")
+        return jsonify({"message": "Erro interno no servidor."}), 500
+
+
+# --- ROTA PARA CRIAR EVENTO NO GOOGLE CALENDAR ---
+# (Esta rota ainda não está conectada ao banco de dados, mas está funcional)
 @app.route('/api/create-event', methods=['POST'])
 def create_event():
-    # Verifica se o serviço do Google foi carregado corretamente
     if not google_service:
         return jsonify({"message": "Erro de configuração no servidor (Google Service não disponível)."}), 500
 
-    # 1. Extrai os dados enviados pelo Typebot
     data = request.get_json()
     appointment_date_str = data.get('appointmentDate')
     client_name = data.get('clientName')
@@ -75,27 +113,18 @@ def create_event():
         return jsonify({"message": "Dados incompletos. 'appointmentDate' e 'clientName' são obrigatórios."}), 400
 
     try:
-        # 2. Monta o objeto do evento para o Google Calendar
         start_time = datetime.fromisoformat(appointment_date_str.replace('Z', '+00:00'))
-        end_time = start_time + timedelta(hours=1) # Define a duração da consulta para 1 hora
+        end_time = start_time + timedelta(hours=1)
 
         event = {
             'summary': f'Consulta: {client_name}',
             'description': f'Agendado via Chatbot. Contato: {client_phone or "Não informado"}',
-            'start': {
-                'dateTime': start_time.isoformat(),
-                'timeZone': 'America/Sao_Paulo', # IMPORTANTE: Mude para o seu fuso horário!
-            },
-            'end': {
-                'dateTime': end_time.isoformat(),
-                'timeZone': 'America/Sao_Paulo', # IMPORTANTE: Mude para o seu fuso horário!
-            },
+            'start': { 'dateTime': start_time.isoformat(), 'timeZone': 'America/Sao_Paulo' },
+            'end': { 'dateTime': end_time.isoformat(), 'timeZone': 'America/Sao_Paulo' },
         }
 
-        # 3. Insere o evento na agenda
-        created_event = service.events().insert(calendarId=CALENDAR_ID, body=event).execute()
+        created_event = google_service.events().insert(calendarId=GOOGLE_CALENDAR_ID, body=event).execute()
 
-        # 4. Retorna uma resposta de sucesso
         return jsonify({
             "message": "Agendamento criado com sucesso!",
             "eventId": created_event['id'],
@@ -103,56 +132,11 @@ def create_event():
         }), 200
 
     except Exception as e:
-        print(f"Erro ao criar evento: {e}") # Imprime o erro nos logs do Render
+        print(f"Erro ao criar evento: {e}")
         return jsonify({"message": "Ocorreu um erro ao criar o agendamento.", "error": str(e)}), 500
 
-# --- NOVA ROTA PARA BUSCAR PACIENTE POR TELEFONE ---
-@app.route('/api/patient', methods=['GET'])
-def get_patient_by_phone():
-    # 1. Pega o número de telefone dos parâmetros da URL
-    phone_number = request.args.get('phone')
 
-    if not phone_number:
-        return jsonify({"message": "Número de telefone não fornecido."}), 400
-
-    try:
-        # 2. Conecta ao banco de dados
-        conn = get_db_connection()
-        cur = conn.cursor() # Cria um "cursor" para executar comandos
-
-        # 3. Executa a consulta SQL para encontrar o paciente
-        #cur.execute("SELECT id, full_name, email FROM patients WHERE phone = %s", (phone_number,))
-        cur.execute("SELECT CadCli_Nome, CadCli_Email FROM dCadastro_Cli WHERE CadCli_Celular = %s", (phone_number,))
-
-        
-        patient = cur.fetchone() # Pega o primeiro resultado encontrado
-
-        # 4. Fecha a conexão
-        cur.close()
-        conn.close()
-
-        # 5. Verifica o resultado e retorna a resposta
-        if patient:
-            # Se encontrou, retorna os dados do paciente
-            patient_data = {
-                "id": patient[0],
-                "full_name": patient[1],
-                "email": patient[2]
-            }
-            return jsonify(patient_data), 200
-        else:
-            # Se não encontrou, retorna uma mensagem clara
-            return jsonify({"message": "Paciente não encontrado."}), 404
-
-    except Exception as e:
-        print(f"Erro ao buscar paciente: {e}")
-        return jsonify({"message": "Erro interno no servidor."}), 500
-
-
-# Rota de teste para verificar se a API está no ar
+# --- ROTA DE TESTE PARA VERIFICAR SE A API ESTÁ NO AR ---
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
-
-
-
