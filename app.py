@@ -5,9 +5,13 @@ from datetime import datetime, timedelta
 from flask import Flask, request, jsonify
 from google.oauth2 import service_account
 from googleapiclient.discovery import build
+from flask_cors import CORS
 
 # Inicializa a aplicação Flask
 app = Flask(__name__)
+
+# Habilita o CORS para todas as rotas da aplicação
+CORS(app)
 
 # --- CARREGANDO VARIÁVEIS DE AMBIENTE ---
 # Pega as credenciais e configurações do ambiente do Render de forma segura
@@ -201,6 +205,7 @@ def create_patient():
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
 
 
