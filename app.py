@@ -74,7 +74,8 @@ def get_patient_by_phone():
 
         # Consulta SQL ajustada para usar os nomes da sua tabela e colunas
         # !! IMPORTANTE: Verifique se 'CadCli_Email' é o nome correto da sua coluna de e-mail !!
-        sql_query = "SELECT CadCli_NmPrefer, CadCli_Email FROM dCadastro_Cli WHERE CadCli_Celular = %s"
+        sql_query = # Linha Corrigida (A VERSÃO FINAL):
+        sql_query = 'SELECT "cadcli_nmprefer", "cadcli_email" FROM "cadastro_cli" WHERE "cadcli_celular" = %s'
         
         cur.execute(sql_query, (phone_number,))
         patient = cur.fetchone()
@@ -140,4 +141,5 @@ def create_event():
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
