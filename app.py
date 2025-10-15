@@ -61,12 +61,21 @@ def get_db_connection():
 
 
 # --- ROTA PARA BUSCAR PACIENTE POR TELEFONE ---
-@app.route('/api/patient', methods=['GET'])
+@app.route('/api/patient', methods=['POST'])
 def get_patient_by_phone():
-    phone_number = request.args.get('phone')
+    # Pega os dados enviados pelo Typebot
+    data = request.get_json()
+    phone_number = data.get('phone')
 
     if not phone_number:
-        return jsonify({"message": "Número de telefone não fornecido."}), 400
+        return jsonify({"message": "Número de telefone não fornecido no corpo da requisição."}), 400
+    
+#@app.route('/api/patient', methods=['GET'])
+#def get_patient_by_phone():
+#    phone_number = request.args.get('phone')
+
+#    if not phone_number:
+#        return jsonify({"message": "Número de telefone não fornecido."}), 400
 
     try:
         conn = get_db_connection()
@@ -139,6 +148,7 @@ def create_event():
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
 
 
