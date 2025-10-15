@@ -73,7 +73,7 @@ def get_patient_by_phone():
         cur = conn.cursor()
     
         # A linha abaixo é a única que você precisa alterar
-        sql_query = 'SELECT "cadcli_nmprefer", "cadcli_email" FROM "dcadastro_cli" WHERE "cadcli_celular" = %s'
+        sql_query = 'SELECT "CadCli_NmPrefer", "CadCli_Email" FROM "dCadastro_Cli" WHERE "CadCli_Celular" = %s'
         
         cur.execute(sql_query, (phone_number,))
         patient = cur.fetchone()
@@ -139,6 +139,7 @@ def create_event():
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
 
 
