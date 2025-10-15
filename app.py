@@ -143,11 +143,65 @@ def create_event():
         print(f"Erro ao criar evento: {e}")
         return jsonify({"message": "Ocorreu um erro ao criar o agendamento.", "error": str(e)}), 500
 
+# --- NOVA ROTA PARA CRIAR UM NOVO PACIENTE ---
+@app.route('/api/create-patient', methods=['POST'])
+def create_patient():
+    # 1. Pega os dados enviados pelo Typebot no corpo da requisição
+    data = request.get_json()
+    full_name = data.get('fullName')
+    phone = data.get('phone')
+    email = data.get('email')
+    preferred_name = data.get('preferredName')
+
+    # 2. Validação simples para garantir que os dados essenciais foram enviados
+    if not full_name or not phone or not email:
+        return jsonify({"message": "Dados incompletos. Nome, telefone e email são obrigatórios."}), 400
+
+    try:
+        # 3. Conecta ao banco de dados
+        conn = get_db_connection()
+        cur = conn.cursor()
+
+        # 4. Define a consulta SQL para INSERIR um novo registro
+        # Usamos aspas duplas para garantir a correspondência com as colunas no Supabase
+        sql_query = """
+            INSERT INTO "dCadastro_Cli" ("CadCli_Nome", "CadCli_Celular", "CadCli_Email", "CadCli_NmPrefer")
+            VALUES (%s, %s, %s, %s)
+            RETURNING "CadCli_ID"; 
+        """
+        # O RETURNING "CadCli_ID" é opcional, mas é uma boa prática para confirmar que a inserção funcionou e obter o ID do novo cliente.
+
+        # 5. Executa a consulta, passando os dados de forma segura
+        cur.execute(sql_query, (full_name, phone, email, preferred_name or full_name)) # Se o nome preferido não for informado, usa o nome completo
+
+        # 6. Pega o ID retornado
+        new_patient_id = cur.fetchone()[0]
+
+        # 7. Confirma a transação no banco de dados
+        conn.commit()
+
+        # 8. Fecha a conexão
+        cur.close()
+        conn.close()
+
+        # 9. Retorna uma resposta de sucesso para o Typebot
+        return jsonify({
+            "message": "Paciente criado com sucesso!",
+            "patientId": new_patient_id
+        }), 201 # 201 Created é o código de status correto para criação
+
+    except Exception as e:
+        print(f"Erro ao criar paciente: {e}")
+        return jsonify({"message": "Erro interno no servidor ao criar paciente."}), 500
+
+
+
 
 # --- ROTA DE TESTE PARA VERIFICAR SE A API ESTÁ NO AR ---
 @app.route('/')
 def index():
     return "API do Chatbot no ar!"
+
 
 
 
