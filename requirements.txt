@@ -4,3 +4,4 @@ google-auth-httplib2
 google-auth-oauthlib
 gunicorn
 psycopg2-binary
+Flask-Cors
